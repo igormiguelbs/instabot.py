@@ -13,8 +13,8 @@ from src import InstaBot
 if __name__ == '__main__':
 
     bot = InstaBot(
-        login="outlabrio",
-        password="mud@r1324",
+        login="",
+        password="",
         like_per_day=1600,
         comments_per_day=0,
         tag_list=['design', 'marketingdigital', 'webdesign', 'seo', 'socialmedia', 'app', 'webapp', 'maisamorporfavor', 'socialintelligence', 'analytics', 'layout', 'wireframe', 'mulheresfortes', 'serradosorgaos', 'parquedasaves', 'parquenacionaldatijuca'],

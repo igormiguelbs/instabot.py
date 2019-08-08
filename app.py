@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 import os
 import dotenv
-from src.location.extract_location import get_locations_id
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10,16 +9,15 @@ dotenv.load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 from src import InstaBot
 
-location_ids = get_locations_id('João Pedro')
 
 if __name__ == '__main__':
 
     bot = InstaBot(
-        login=os.environ.get('LOGIN', ''),
-        password=os.environ.get('PASSWORD', ''),
-        like_per_day=1400,
+        login="outlabrio",
+        password="mud@r1324",
+        like_per_day=1600,
         comments_per_day=0,
-        tag_list=[id['location_id'] for id in location_ids][::-2],
+        tag_list=['design', 'marketingdigital', 'webdesign', 'seo', 'socialmedia', 'app', 'webapp', 'maisamorporfavor', 'socialintelligence', 'analytics', 'layout', 'wireframe', 'mulheresfortes', 'serradosorgaos', 'parquedasaves', 'parquenacionaldatijuca'],
         user_blacklist={},
         max_like_for_one_tag=50,
         follow_per_day=0,
@@ -60,4 +58,4 @@ if __name__ == '__main__':
         mode = 0
 
         if mode == 0:
-            bot.auto_mod()
+            bot.new_auto_mod()

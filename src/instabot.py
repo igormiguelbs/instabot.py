@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 from __future__ import print_function
-from io import BytesIO
-from src.location.extract_location import get_location
-from .hashtag.extract_hashtag import *
 from .unfollow_protocol import unfollow_protocol
 from .userinfo import UserInfo
 import atexit
@@ -25,9 +23,6 @@ from .sql_updates import get_username_random, get_username_to_unfollow_random
 from .sql_updates import check_and_insert_user_agent
 from fake_useragent import UserAgent
 import re
-from PIL import Image
-from src.extract_color.get_color import img_rgbhsl_rep
-
 
 class InstaBot:
     """
@@ -131,7 +126,7 @@ class InstaBot:
     def __init__(self,
                  login,
                  password,
-                 like_per_day=5000,
+                 like_per_day=1000,
                  media_max_like=50,
                  media_min_like=0,
                  follow_per_day=0,
@@ -289,8 +284,7 @@ class InstaBot:
         })
 
         r = self.s.get(self.url)
-        csrf_token = re.search('(?<=\"csrf_token\":\")\w+', r.text).group(0)
-        self.s.headers.update({'X-CSRFToken': csrf_token})
+        self.s.headers.update({'X-CSRFToken': r.cookies['csrftoken']})
         time.sleep(5 * random.random())
         login = self.s.post(
             self.url_login, data=self.login_post, allow_redirects=True)
@@ -483,15 +477,24 @@ class InstaBot:
                     if media_size > 0 or media_size < 0:
                         media_size -= 1
                         l_c = self.media_by_tag[i]['node']['edge_liked_by']['count']
-                        if True:
+                        if ((l_c <= self.media_max_like and
+                             l_c >= self.media_min_like) or
+                            (self.media_max_like == 0 and
+                             l_c >= self.media_min_like) or
+                            (self.media_min_like == 0 and
+                             l_c <= self.media_max_like) or
+                            (self.media_min_like == 0 and
+                             self.media_max_like == 0)):
                             for blacklisted_user_name, blacklisted_user_id in self.user_blacklist.items(
                             ):
-                                if self.media_by_tag[i]['node']['owner']['id'] == blacklisted_user_id:
+                                if self.media_by_tag[i]['node']['owner'][
+                                        'id'] == blacklisted_user_id:
                                     self.write_log(
                                         "Not liking media owned by blacklisted user: "
                                         + blacklisted_user_name)
                                     return False
-                            if self.media_by_tag[i]['node']['owner']['id'] == self.user_id:
+                            if self.media_by_tag[i]['node']['owner'][
+                                    'id'] == self.user_id:
                                 self.write_log(
                                     "Keep calm - It's your own media ;)")
                                 return False
@@ -499,10 +502,10 @@ class InstaBot:
                                 self.write_log("Keep calm - It's already liked ;)")
                                 return False
                             try:
-                                if len(self.media_by_tag[i]['node']['edge_media_to_caption']['edges']) > 1:
+                                if (len(self.media_by_tag[i]['node']['edge_media_to_caption']['edges']) > 1):
                                     caption = self.media_by_tag[i]['node']['edge_media_to_caption'][
                                         'edges'][0]['node']['text'].encode(
-                                        'ascii', errors='ignore')
+                                            'ascii', errors='ignore')
                                     tag_blacklist = set(self.tag_blacklist)
                                     if sys.version_info[0] == 3:
                                         tags = {
@@ -532,10 +535,9 @@ class InstaBot:
                                 logging.exception("Except on like_all_exist_media")
                                 return False
 
-                            log_string = "Trying to add media: %s" % \
+                            log_string = "Trying to like media: %s" % \
                                          (self.media_by_tag[i]['node']['id'])
                             self.write_log(log_string)
-                            like = self.add_to_api_small_big(i)
                             like = self.like(self.media_by_tag[i]['node']['id'])
                             # comment = self.comment(self.media_by_tag[i]['id'], 'Cool!')
                             # follow = self.follow(self.media_by_tag[i]["owner"]["id"])
@@ -544,16 +546,15 @@ class InstaBot:
                                     # Like, all ok!
                                     self.error_400 = 0
                                     self.like_counter += 1
-                                    short = self.get_instagram_url_from_media_id(self.media_by_tag[i]['node']['id'])
-                                    log_string = "Added: %s. Add #%i." % \
-                                                 (short,
+                                    log_string = "Liked: %s. Like #%i." % \
+                                                 (self.media_by_tag[i]['node']['id'],
                                                   self.like_counter)
                                     insert_media(self,
                                                  media_id=self.media_by_tag[i]['node']['id'],
                                                  status="200")
                                     self.write_log(log_string)
                                 elif like.status_code == 400:
-                                    log_string = "Not Added: %i" \
+                                    log_string = "Not liked: %i" \
                                                  % (like.status_code)
                                     self.write_log(log_string)
                                     insert_media(self,
@@ -593,7 +594,7 @@ class InstaBot:
     def like(self, media_id):
         """ Send http request to like media by ID """
         if self.login_status:
-            url_likes = self.url_likes % media_id
+            url_likes = self.url_likes % (media_id)
             try:
                 like = self.s.post(url_likes)
                 last_liked_media_id = media_id
@@ -601,42 +602,6 @@ class InstaBot:
                 logging.exception("Except on like!")
                 like = 0
             return like
-
-    def add_to_api_small_big(self, i):
-        try:
-            text = self.media_by_tag[i]['node']['edge_media_to_caption']['edges'][0]['node']['text'] \
-                if self.media_by_tag[i]['node']['edge_media_to_caption']['edges'] else ""
-
-            image_url = self.media_by_tag[i]['node']['display_url']
-            response = requests.get(image_url)
-            img = Image.open(BytesIO(response.content)).convert('RGB')
-            rgbhsl = img_rgbhsl_rep(img)
-
-            small_big_info = {
-                "photo_id": self.media_by_tag[i]['node']['id'],
-                "shortcode": self.media_by_tag[i]['node']['shortcode'],
-                "image_url": self.media_by_tag[i]['node']['display_url'],
-                "thumbnail": self.media_by_tag[i]['node']['thumbnail_src'],
-                "text": text,
-                "taken_at_timestamp": self.media_by_tag[i]['node']['taken_at_timestamp'],
-                "count_liked_by": self.media_by_tag[i]['node']['edge_liked_by']['count'],
-                "red": rgbhsl.r,
-                "green": rgbhsl.g,
-                "blue": rgbhsl.b,
-                "hue": rgbhsl.h,
-                "saturation": rgbhsl.s,
-                "lightness": rgbhsl.l,
-                "hashtag": get_hashtag(text),
-                "location": get_location(self.media_by_tag[i]['node']['shortcode'])
-            }
-            headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
-            small_big_info = json.dumps(small_big_info)
-            r = requests.post('http://small-big-api.herokuapp.com/photo', data=small_big_info, headers=headers)
-            # r = requests.post('http://127.0.0.1:5000/photo', data=small_big_info, headers=headers)
-        except:
-            raise
-        return r
-
 
     def unlike(self, media_id):
         """ Send http request to unlike media by ID """
@@ -748,15 +713,10 @@ class InstaBot:
     def new_auto_mod(self):
         while True:
             now = datetime.datetime.now()
-            # distance between start time and now
-            dns = self.time_dist(datetime.time(self.start_at_h,
-                                               self.start_at_m),
-                                 now.time())
-            # distance between end time and now
-            dne = self.time_dist(datetime.time(self.end_at_h,
-                                               self.end_at_m),
-                                 now.time())
-            if (dns == 0 or dne < dns) and dne != 0:
+            if (
+                    datetime.time(self.start_at_h, self.start_at_m) <= now.time()
+                    and now.time() <= datetime.time(self.end_at_h, self.end_at_m)
+            ):
                 # ------------------- Get media_id -------------------
                 if len(self.media_by_tag) == 0:
                     self.get_media_id_by_tag(random.choice(self.tag_list))
@@ -806,7 +766,7 @@ class InstaBot:
 
     def new_auto_mod_follow(self):
         if time.time() > self.next_iteration["Follow"] and \
-                self.follow_per_day != 0 and len(self.media_by_tag) > 0:
+                        self.follow_per_day != 0 and len(self.media_by_tag) > 0:
             if self.media_by_tag[0]['node']["owner"]["id"] == self.user_id:
                 self.write_log("Keep calm - It's your own profile ;)")
                 return
@@ -832,7 +792,7 @@ class InstaBot:
                 self.write_log(log_string)
                 self.auto_unfollow()
                 self.next_iteration["Unfollow"] = time.time() + \
-                                                  self.add_time(self.unfollow_delay)
+                                                    self.add_time(self.unfollow_delay)
             if self.bot_mode == 1:
                 unfollow_protocol(self)
 
@@ -900,11 +860,12 @@ class InstaBot:
                 log_string = "api limit reached from instagram. Will try later"
                 self.write_log(log_string)
                 return False
-            if current_user in self.unfollow_whitelist:
-                log_string = "found whitelist user, not unfollowing"
-                # problem, if just one user in unfollowlist -> might create inf. loop. therefore just skip round
-                self.write_log(log_string)
-                return False
+            for wluser in self.unfollow_whitelist:
+                if wluser == current_user:
+                    log_string = (
+                        "found whitelist user, starting search again")
+                    self.write_log(log_string)
+                    break
             else:
                 checking = False
 
